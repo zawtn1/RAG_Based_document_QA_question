@@ -58,7 +58,7 @@ A production-ready Retrieval-Augmented Generation (RAG) system that enables inte
 
 1. **Clone the repository**
    ```bash
-   git clone https://github.com/yourusername/RAG-based_Document_QA_System.git
+   git clone  https://github.com/zawtn1/RAG_Based_document_QA_question.git
    cd RAG-based_Document_QA_System
    ```
 
@@ -206,8 +206,8 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 ## 👨‍💻 Author
 
 **Your Name**
-- GitHub: [@yourusername](https://github.com/yourusername)
-- LinkedIn: [Your LinkedIn](https://linkedin.com/in/yourprofile)
+- GitHub: [@zawtn1](https://github.com/zawtn1)
+- LinkedIn: [Yassine Zouari](https://www.linkedin.com/in/yassine-zouari-669ab5224/)
 
 ## 🙏 Acknowledgments
 
