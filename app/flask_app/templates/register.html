@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sign Up - RAG Document QA System</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/auth.css') }}">
+</head>
+<body>
+    <div class="auth-card">
+        <h1>📚 Create Account</h1>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% for category, message in messages %}
+                <div class="flash {{ category }}">{{ message }}</div>
+            {% endfor %}
+        {% endwith %}
+
+        <form method="POST">
+            {{ form.hidden_tag() }}
+
+            <div class="field">
+                {{ form.email.label }}
+                {{ form.email(placeholder="you@example.com") }}
+                {% for error in form.email.errors %}
+                    <div class="field-errors">{{ error }}</div>
+                {% endfor %}
+            </div>
+
+            <div class="field">
+                {{ form.password.label }}
+                {{ form.password(placeholder="At least 8 characters") }}
+                {% for error in form.password.errors %}
+                    <div class="field-errors">{{ error }}</div>
+                {% endfor %}
+            </div>
+
+            <div class="field">
+                {{ form.confirm_password.label }}
+                {{ form.confirm_password(placeholder="••••••••") }}
+                {% for error in form.confirm_password.errors %}
+                    <div class="field-errors">{{ error }}</div>
+                {% endfor %}
+            </div>
+
+            <button class="auth-submit" type="submit">Sign Up</button>
+        </form>
+
+        <div class="auth-footer">
+            Already have an account? <a href="{{ url_for('auth.login') }}">Log in</a>
+        </div>
+    </div>
+</body>
+</html>

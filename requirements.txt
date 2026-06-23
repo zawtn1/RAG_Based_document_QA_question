@@ -7,3 +7,10 @@ sentence-transformers==2.7.0
 pypdf==4.2.0
 ollama==0.3.0
 pydantic==2.7.4
+Flask-SQLAlchemy==3.1.1
+Flask-Login==0.6.3
+Flask-Migrate==4.0.7
+Flask-WTF==1.2.1
+psycopg2-binary==2.9.9
+python-dotenv==1.0.1
+email-validator==2.1.1

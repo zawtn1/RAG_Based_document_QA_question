@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>RAG Document QA System</title>
     <style>
         * {
@@ -310,6 +311,134 @@
         ::-webkit-scrollbar-thumb:hover {
             background: rgba(0, 0, 0, 0.3);
         }
+
+        /* User bar */
+        .sidebar-user {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 14px;
+        }
+
+        .sidebar-user span {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            max-width: 170px;
+        }
+
+        .logout-btn {
+            background: none;
+            border: none;
+            color: #667eea;
+            font-size: 12px;
+            cursor: pointer;
+            text-decoration: underline;
+            flex-shrink: 0;
+        }
+
+        /* Documents panel */
+        .documents-panel {
+            margin-bottom: 20px;
+            padding-bottom: 20px;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+        }
+
+        .documents-panel h3 {
+            font-size: 12px;
+            color: #555;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .doc-upload-form {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 10px;
+        }
+
+        .doc-upload-form input[type="file"] {
+            flex: 1;
+            font-size: 11px;
+            min-width: 0;
+        }
+
+        .doc-upload-form button {
+            padding: 6px 10px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 12px;
+            flex-shrink: 0;
+        }
+
+        .doc-upload-form button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .doc-list {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            max-height: 140px;
+            overflow-y: auto;
+        }
+
+        .doc-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 6px 10px;
+            background: rgba(102, 126, 234, 0.08);
+            border-radius: 6px;
+            font-size: 12px;
+            gap: 6px;
+        }
+
+        .doc-item .doc-name {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            flex: 1;
+            color: #333;
+        }
+
+        .doc-status {
+            font-size: 10px;
+            padding: 2px 6px;
+            border-radius: 4px;
+            flex-shrink: 0;
+        }
+
+        .doc-status.indexed {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .doc-status.pending {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .doc-status.failed {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .doc-delete {
+            background: none;
+            border: none;
+            color: #c0392b;
+            cursor: pointer;
+            font-size: 14px;
+            flex-shrink: 0;
+        }
     </style>
 </head>
 <body>
@@ -319,6 +448,26 @@
             <div class="sidebar-header">
                 <h2>💬 Chat History</h2>
             </div>
+
+            <div class="sidebar-user">
+                <span title="{{ current_user.email }}">{{ current_user.email }}</span>
+                <form method="POST" action="{{ url_for('auth.logout') }}" style="margin:0;">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="logout-btn">Log out</button>
+                </form>
+            </div>
+
+            <div class="documents-panel">
+                <h3>📄 Documents</h3>
+                <div class="doc-upload-form">
+                    <input type="file" id="docFile" accept="application/pdf">
+                    <button id="uploadBtn" onclick="uploadDocument()">Upload</button>
+                </div>
+                <div class="doc-list" id="docList">
+                    <!-- Document items will be added here -->
+                </div>
+            </div>
+
             <button class="new-chat-btn" onclick="newChat()">+ New Chat</button>
             <div class="chat-history" id="chatHistory">
                 <!-- History items will be added here -->
@@ -359,8 +508,18 @@
     </div>
 
     <script>
-        let chatHistory = [];
-        let currentChatId = Date.now();
+        let currentSessionId = null;
+
+        const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
+
+        async function apiFetch(url, options = {}) {
+            options.headers = options.headers || {};
+            options.headers["X-CSRFToken"] = csrfToken;
+            if (!(options.body instanceof FormData) && options.body) {
+                options.headers["Content-Type"] = "application/json";
+            }
+            return fetch(url, options);
+        }
 
         function addMessage(text, isUser) {
             const messagesContainer = document.getElementById("chatMessages");
@@ -426,7 +585,7 @@
         async function ask() {
             const questionInput = document.getElementById("question");
             const question = questionInput.value.trim();
-            
+
             if (!question) return;
 
             const sendBtn = document.getElementById("sendBtn");
@@ -440,29 +599,25 @@
             addLoadingMessage();
 
             try {
-                const response = await fetch("/ask", {
+                const response = await apiFetch("/ask", {
                     method: "POST",
-                    headers: {
-                        "Content-Type": "application/json"
-                    },
-                    body: JSON.stringify({ query: question })
+                    body: JSON.stringify({ query: question, session_id: currentSessionId })
                 });
 
                 removeLoadingMessage();
 
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
+                const data = await response.json();
+
+                if (!response.ok || data.error) {
+                    addMessage("Error: " + (data.error || `HTTP error! status: ${response.status}`), false);
+                    return;
                 }
 
-                const data = await response.json();
-                
-                if (data.error) {
-                    addMessage("Error: " + data.error, false);
-                } else {
-                    addMessage(data.answer, false);
-                    
-                    // Update chat history
-                    updateChatHistory(question);
+                addMessage(data.answer, false);
+
+                if (data.session_id !== currentSessionId) {
+                    currentSessionId = data.session_id;
+                    await loadSessions();
                 }
 
             } catch (error) {
@@ -481,69 +636,136 @@
             }
         }
 
-        function updateChatHistory(question) {
+        async function loadSessions() {
+            const response = await apiFetch("/api/sessions");
+            const sessions = await response.json();
+
             const historyContainer = document.getElementById("chatHistory");
-            
-            // Check if this chat already exists in history
-            let existingChat = chatHistory.find(chat => chat.id === currentChatId);
-            
-            if (!existingChat) {
-                // Create new chat entry
-                const chatEntry = {
-                    id: currentChatId,
-                    preview: question.substring(0, 50) + (question.length > 50 ? "..." : ""),
-                    timestamp: new Date()
-                };
-                
-                chatHistory.unshift(chatEntry);
-                
-                // Add to UI
+            historyContainer.innerHTML = "";
+
+            sessions.forEach(session => {
                 const historyItem = document.createElement("div");
-                historyItem.className = "history-item active";
-                historyItem.textContent = chatEntry.preview;
-                historyItem.onclick = () => selectChat(chatEntry.id);
-                historyItem.dataset.chatId = chatEntry.id;
-                
-                historyContainer.insertBefore(historyItem, historyContainer.firstChild);
-            }
-        }
-
-        function selectChat(chatId) {
-            // Remove active class from all items
-            document.querySelectorAll('.history-item').forEach(item => {
-                item.classList.remove('active');
+                historyItem.className = "history-item" + (session.id === currentSessionId ? " active" : "");
+                historyItem.textContent = session.title;
+                historyItem.dataset.chatId = session.id;
+                historyItem.onclick = () => selectChat(session.id);
+                historyContainer.appendChild(historyItem);
             });
-            
-            // Add active class to selected item
-            const selectedItem = document.querySelector(`[data-chat-id="${chatId}"]`);
-            if (selectedItem) {
-                selectedItem.classList.add('active');
-            }
-            
-            currentChatId = chatId;
         }
 
-        function newChat() {
+        async function selectChat(chatId) {
+            currentSessionId = chatId;
+
+            document.querySelectorAll('.history-item').forEach(item => {
+                item.classList.toggle('active', Number(item.dataset.chatId) === chatId);
+            });
+
+            const response = await apiFetch(`/api/sessions/${chatId}/messages`);
+            const messages = await response.json();
+
             const messagesContainer = document.getElementById("chatMessages");
-            messagesContainer.innerHTML = `
+            messagesContainer.innerHTML = "";
+
+            if (messages.length === 0) {
+                showEmptyState();
+            } else {
+                messages.forEach(m => addMessage(m.content, m.role === "user"));
+            }
+        }
+
+        function showEmptyState() {
+            document.getElementById("chatMessages").innerHTML = `
                 <div class="empty-state">
                     <div class="empty-state-icon">🤖</div>
                     <h2>Welcome to RAG QA System</h2>
                     <p>Ask me anything about your documents!</p>
                 </div>
             `;
-            
-            // Remove active class from all history items
+        }
+
+        function newChat() {
+            currentSessionId = null;
+            showEmptyState();
+
             document.querySelectorAll('.history-item').forEach(item => {
                 item.classList.remove('active');
             });
-            
-            currentChatId = Date.now();
+
             document.getElementById("question").focus();
         }
 
-        // Focus input on load
+        async function loadDocuments() {
+            const response = await apiFetch("/api/documents");
+            const docs = await response.json();
+
+            const list = document.getElementById("docList");
+            list.innerHTML = "";
+
+            docs.forEach(doc => {
+                const item = document.createElement("div");
+                item.className = "doc-item";
+
+                const name = document.createElement("span");
+                name.className = "doc-name";
+                name.title = doc.original_filename;
+                name.textContent = doc.original_filename;
+
+                const status = document.createElement("span");
+                status.className = "doc-status " + doc.status;
+                status.textContent = doc.status;
+
+                const deleteBtn = document.createElement("button");
+                deleteBtn.className = "doc-delete";
+                deleteBtn.textContent = "×";
+                deleteBtn.onclick = () => deleteDocument(doc.id);
+
+                item.appendChild(name);
+                item.appendChild(status);
+                item.appendChild(deleteBtn);
+                list.appendChild(item);
+            });
+        }
+
+        async function uploadDocument() {
+            const fileInput = document.getElementById("docFile");
+            const file = fileInput.files[0];
+            if (!file) return;
+
+            const uploadBtn = document.getElementById("uploadBtn");
+            uploadBtn.disabled = true;
+            uploadBtn.textContent = "Uploading...";
+
+            const formData = new FormData();
+            formData.append("file", file);
+
+            try {
+                const response = await apiFetch("/api/documents", { method: "POST", body: formData });
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.error || "Upload failed");
+                }
+
+                fileInput.value = "";
+                await loadDocuments();
+            } catch (error) {
+                alert(error.message);
+            } finally {
+                uploadBtn.disabled = false;
+                uploadBtn.textContent = "Upload";
+            }
+        }
+
+        async function deleteDocument(docId) {
+            if (!confirm("Delete this document?")) return;
+            await apiFetch(`/api/documents/${docId}`, { method: "DELETE" });
+            await loadDocuments();
+        }
+
+        // Load sessions/documents and focus input on load
         window.onload = function() {
+            loadSessions();
+            loadDocuments();
             document.getElementById("question").focus();
         };
     </script>
